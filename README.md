@@ -7,20 +7,31 @@ No final você recebe o endereço do painel com HTTPS, o usuário e a senha.
 curl -fsSL https://raw.githubusercontent.com/AstraOnlineWeb/hermes-autoinstall/main/install.sh | sudo bash
 ```
 
-O instalador pergunta os subdomínios e o e-mail para o certificado. O resto é automático.
+O instalador pergunta o modo de instalação, o subdomínio e o e-mail para o certificado. O resto é automático.
 
-## O que é instalado
+## Os dois modos
 
-- Docker e Docker Swarm
-- Traefik, com certificado SSL automático (Let's Encrypt)
-- Portainer, já com usuário e senha criados
-- Hermes Agent em container, com painel protegido por senha
+| | **Docker** | **Nativo** (sem Docker) |
+|---|---|---|
+| O que instala | Docker Swarm, Traefik, Portainer e o Hermes em container | Hermes direto na VPS, com Caddy para o HTTPS |
+| Indicado para | VPS que também roda outros sistemas | VPS dedicada ao agente |
+| Liberdade do agente | fica dentro do container | acessa o sistema; pode instalar e usar programas da máquina |
+| Painel de gestão | Portainer (stack do Hermes com controle total) | systemd (`systemctl`, `journalctl`) |
+| Tempo de instalação | cerca de 3 minutos | cerca de 5 minutos |
+| Detalhes | [docker/README.md](docker/README.md) | [nativo/README.md](nativo/README.md) |
 
-Detalhes, variáveis e solução de problemas: [docker/README.md](docker/README.md).
+Para escolher o modo direto no comando:
 
-> **Modo nativo (sem Docker):** está em validação e será publicado neste mesmo repositório.
+```bash
+# Docker
+curl -fsSL https://raw.githubusercontent.com/AstraOnlineWeb/hermes-autoinstall/main/install.sh | sudo bash -s -- docker
 
-Você recebe pronto:
+# Nativo
+curl -fsSL https://raw.githubusercontent.com/AstraOnlineWeb/hermes-autoinstall/main/install.sh | sudo bash -s -- nativo
+```
+
+Os dois modos entregam:
+
 
 
 - Painel do Hermes em `https://seu-subdominio`, protegido por usuário e senha.
@@ -36,7 +47,7 @@ Você recebe pronto:
    Recomendado: 2 vCPU, 4 GB de RAM e 20 GB de disco.
 2. Um **subdomínio para o Hermes** com registro DNS tipo **A** apontando para o IP da VPS.
    É obrigatório: o painel dá acesso a chaves, terminal e arquivos, por isso só é publicado com HTTPS.
-3. O subdomínio do Portainer é opcional. Sem ele, o acesso é por `https://IP:9443`.
+3. No modo Docker, o subdomínio do Portainer é opcional. Sem ele, o acesso é por `https://IP:9443`.
 
 ## Sem nenhuma pergunta
 
@@ -45,10 +56,10 @@ curl -fsSL https://raw.githubusercontent.com/AstraOnlineWeb/hermes-autoinstall/m
   sudo ASSUME_YES=1 \
        ACME_EMAIL=seu@email.com \
        HERMES_DOMAIN=hermes.seudominio.com.br \
-       bash
+       bash -s -- docker
 ```
 
-Acrescente `PORTAINER_DOMAIN=portainer.seudominio.com.br` se quiser o Portainer com subdomínio.
+Troque `docker` por `nativo` para instalar sem Docker. No modo Docker, acrescente `PORTAINER_DOMAIN=portainer.seudominio.com.br` se quiser o Portainer com subdomínio.
 Sem ele, o Portainer fica em `https://IP:9443`. As demais variáveis estão em [docker/README.md](docker/README.md).
 
 ## Depois de instalar
@@ -68,8 +79,10 @@ Os arquivos do instalador ficam em `/opt/hermes-autoinstall`.
 
 ## Segurança
 
-- O painel do Hermes só é publicado com HTTPS e login.
-- O painel e a API do Hermes não têm porta aberta no servidor. O acesso passa pelo Traefik, nas portas 80 e 443.
+- O painel do Hermes só é publicado com HTTPS e login. No modo nativo, o instalador confere isso antes de
+  ligar o HTTPS e interrompe a instalação se o painel estiver aberto.
+- O painel e a API do Hermes não têm porta aberta para a internet. O acesso passa pelo proxy (Traefik ou Caddy),
+  nas portas 80 e 443.
 - As senhas são geradas na hora, em cada instalação. Não há senha padrão.
 - Os arquivos com senhas são legíveis apenas pelo root.
 

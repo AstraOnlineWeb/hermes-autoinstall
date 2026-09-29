@@ -9,6 +9,7 @@
 # Para pular o menu, informe o modo:
 #
 #   curl -fsSL .../install.sh | sudo bash -s -- docker
+#   curl -fsSL .../install.sh | sudo bash -s -- nativo
 #
 # As variaveis de ambiente dos instaladores (ASSUME_YES, HERMES_DOMAIN, ACME_EMAIL...)
 # sao repassadas. Veja o README de cada modo.
@@ -21,7 +22,7 @@ AUTOINSTALL_TARBALL_URL="${AUTOINSTALL_TARBALL_URL:-https://github.com/$AUTOINST
 AUTOINSTALL_DIR="${AUTOINSTALL_DIR:-/opt/hermes-autoinstall}"
 ASSUME_YES="${ASSUME_YES:-0}"
 MODE="${1:-${MODE:-}}"
-NATIVO_DISPONIVEL=0   # o modo nativo (sem Docker) esta em validacao
+NATIVO_DISPONIVEL=1
 
 C_RESET="\033[0m"; C_BLUE="\033[1;34m"; C_GREEN="\033[1;32m"; C_YELLOW="\033[1;33m"; C_RED="\033[1;31m"
 log() { echo -e "${C_BLUE}==>${C_RESET} $*"; }
