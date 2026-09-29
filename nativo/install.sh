@@ -76,6 +76,11 @@ if [ "$ASSUME_YES" != "1" ] && [ ! -t 0 ] && [ -r /dev/tty ]; then
   exec < /dev/tty
 fi
 
+clean_input() {
+  # Remove sequencias de escape (teclas Delete, setas...) e caracteres de controle digitados sem querer
+  printf '%s' "$1" | sed -e 's/\x1b\[[0-9;]*[A-Za-z~]//g' -e 's/\[[0-9;]*~//g' | tr -d '\000-\037\177'
+}
+
 ask() {
   local __var="$1" __prompt="$2" __default="${3:-}" __input=""
   local __current="${!__var:-}"
@@ -86,13 +91,14 @@ ask() {
     return
   fi
   if [ -n "$__default" ]; then
-    read -r -p "$(echo -e "${C_YELLOW}?${C_RESET} $__prompt [$__default]: ")" __input
+    read -e -r -p "$(echo -e "${C_YELLOW}?${C_RESET} $__prompt [$__default]: ")" __input
     __input="${__input:-$__default}"
   else
     while [ -z "$__input" ]; do
-      read -r -p "$(echo -e "${C_YELLOW}?${C_RESET} $__prompt: ")" __input
+      read -e -r -p "$(echo -e "${C_YELLOW}?${C_RESET} $__prompt: ")" __input
     done
   fi
+  __input="$(clean_input "$__input")"
   printf -v "$__var" '%s' "$__input"
 }
 
@@ -100,7 +106,7 @@ confirm() {
   local __def="${2:-n}" __reply="" __hint="[s/N]"
   [ "$__def" = "s" ] && __hint="[S/n]"
   [ "$ASSUME_YES" = "1" ] && return 0
-  read -r -p "$(echo -e "${C_YELLOW}?${C_RESET} $1 $__hint: ")" __reply
+  read -e -r -p "$(echo -e "${C_YELLOW}?${C_RESET} $1 $__hint: ")" __reply
   __reply="${__reply:-$__def}"
   [[ "$__reply" =~ ^([sS]|[yY])$ ]]
 }
@@ -647,7 +653,7 @@ main() {
 
   ask ACME_EMAIL "E-mail para o certificado SSL (Let's Encrypt)" "$ACME_EMAIL"
   ACME_EMAIL="$(echo "$ACME_EMAIL" | tr -d '[:space:]')"
-  [[ "$ACME_EMAIL" =~ ^[^@[:space:]]+@[^@[:space:]]+\.[^@[:space:]]+$ ]] || die "E-mail invalido: $ACME_EMAIL"
+  [[ "$ACME_EMAIL" =~ ^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$ ]] || die "E-mail invalido: '$ACME_EMAIL'. Rode o instalador de novo e digite apenas o e-mail."
 
   if [ "$ASSUME_YES" != "1" ] && [ "$INSTALL_PLUGINS_SET" != "1" ]; then
     if confirm "Instalar os plugins do Hermes (login por assinatura e app de celular)?" s; then

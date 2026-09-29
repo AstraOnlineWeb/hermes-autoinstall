@@ -70,9 +70,9 @@ main() {
       local reply=""
       while :; do
         if [ "$tty_ok" = "2" ]; then
-          read -r -p "$(echo -e "${C_YELLOW}?${C_RESET} Escolha 1 ou 2: ")" reply < /dev/tty
+          read -e -r -p "$(echo -e "${C_YELLOW}?${C_RESET} Escolha 1 ou 2: ")" reply < /dev/tty
         else
-          read -r -p "$(echo -e "${C_YELLOW}?${C_RESET} Escolha 1 ou 2: ")" reply
+          read -e -r -p "$(echo -e "${C_YELLOW}?${C_RESET} Escolha 1 ou 2: ")" reply
         fi
         case "$reply" in
           1|docker|Docker) MODE="docker"; break ;;
