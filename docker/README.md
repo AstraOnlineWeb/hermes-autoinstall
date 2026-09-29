@@ -78,6 +78,7 @@ sudo ASSUME_YES=1 ACME_EMAIL=seu@email.com HERMES_DOMAIN=hermes.seudominio.com.b
 | `HERMES_PASSWORD` | gerada | senha do painel |
 | `HERMES_DATA_DIR` | `/opt/hermes/data` | pasta de dados no servidor |
 | `HERMES_IMAGE` | `nousresearch/hermes-agent:latest` | imagem do Hermes |
+| `HERMES_VIA_PORTAINER` | `1` | stack do Hermes criada pela API do Portainer. `0` usa linha de comando |
 | `INSTALL_PLUGINS` | `1` | `0` não instala plugins |
 | `PLUGINS_REPO` | `AstraOnlineWeb/hermes-plugins` | repositório dos plugins |
 | `PLUGINS` | `codex-oauth hermes-pwa` | plugins a instalar |
@@ -101,6 +102,17 @@ Senhas aceitam letras, números e os símbolos `@ % + = _ . -`.
 
 O próximo passo é conectar um provedor de IA no painel do Hermes: aba **Codex / Claude**
 para usar uma assinatura, ou **Keys** para uma chave de API.
+
+## Stack do Hermes no Portainer
+
+A stack do Hermes é criada pela API do Portainer. Ela aparece em **Stacks > hermes** com controle total:
+dá para editar o compose, mudar variáveis e reimplantar pelo painel. Traefik e Portainer sobem por linha
+de comando e aparecem como "Limited".
+
+Quem instalou com uma versão anterior pode rodar o instalador de novo: a stack é recriada pelo Portainer
+e os dados são mantidos.
+
+O endereço do Portainer por IP precisa ser digitado começando por `https://`.
 
 ## Rodar de novo
 

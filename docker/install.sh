@@ -51,6 +51,8 @@ PLUGINS_REPO="${PLUGINS_REPO:-AstraOnlineWeb/hermes-plugins}"
 PLUGINS="${PLUGINS:-codex-oauth hermes-pwa}"
 
 HELPER_IMAGE="${HELPER_IMAGE:-traefik:v3.7}"         # usada so para checar o Portainer
+CURL_IMAGE="${CURL_IMAGE:-curlimages/curl:8.11.1}"   # usada para falar com a API do Portainer
+HERMES_VIA_PORTAINER="${HERMES_VIA_PORTAINER:-1}"    # 1 = stack do Hermes criada pela API do Portainer
 STATE_DIR="${STATE_DIR:-/opt/autoinstall}"
 STATE_FILE="$STATE_DIR/credenciais.env"
 ACCESS_FILE="${ACCESS_FILE:-/root/acessos.txt}"
@@ -63,6 +65,8 @@ SERVER_IP=""
 HERMES_AUTH_SECRET=""
 HERMES_API_KEY=""
 PORTAINER_PASSWORD_OK="nao verificado"
+PORTAINER_JWT=""
+HERMES_STACK_MODE=""
 PLUGINS_OK=""
 
 # ---------------------------------------------------------------------------
@@ -278,7 +282,7 @@ step_packages() {
   log "Atualizando pacotes e instalando dependencias"
   export DEBIAN_FRONTEND=noninteractive
   run apt-get update -y
-  run apt-get install -y apparmor-utils curl ca-certificates openssl iproute2
+  run apt-get install -y apparmor-utils curl ca-certificates openssl iproute2 jq
   ok "Pacotes instalados"
 }
 
@@ -469,6 +473,7 @@ step_verify_portainer() {
     out="$(portainer_api /api/auth "$payload")"
     if echo "$out" | grep -q '"jwt"'; then
       PORTAINER_PASSWORD_OK="sim"
+      PORTAINER_JWT="$(echo "$out" | grep -oE '"jwt":"[^"]+"' | head -n1 | cut -d'"' -f4)"
       ok "Login do Portainer validado (usuario '$PORTAINER_USER')"
       return
     fi
@@ -490,6 +495,113 @@ step_verify_portainer() {
     PORTAINER_PASSWORD_OK="nao verificado"
     warn "Portainer nao respondeu em 3 minutos. Verifique: docker service logs portainer_portainer"
   fi
+}
+
+# ---------------------------------------------------------------------------
+# Stacks pela API do Portainer
+# ---------------------------------------------------------------------------
+portainer_call() {
+  # portainer_call <METODO> <caminho> [tempo maximo]   (corpo JSON opcional pela entrada padrao)
+  # Imprime o corpo da resposta e, na ultima linha, o codigo HTTP.
+  local method="$1" path="$2" limit="${3:-30}"
+  local args=(-sS -X "$method" --max-time "$limit" -w '\n%{http_code}'
+              -H "Authorization: Bearer $PORTAINER_JWT")
+  if [ "$method" = "POST" ] || [ "$method" = "PUT" ]; then
+    args+=(-H "Content-Type: application/json" --data-binary @-)
+    docker run --rm -i --network "$NETWORK_NAME" "$CURL_IMAGE" \
+      "${args[@]}" "http://portainer_portainer:9000$path" 2>&1 || true
+  else
+    docker run --rm --network "$NETWORK_NAME" "$CURL_IMAGE" \
+      "${args[@]}" "http://portainer_portainer:9000$path" 2>&1 < /dev/null || true
+  fi
+}
+
+remove_cli_stack() {
+  # Remove uma stack criada por linha de comando, para recria-la pelo Portainer. Os dados ficam no disco.
+  local name="$1" i
+  docker stack rm "$name" >/dev/null 2>&1 || true
+  for i in $(seq 1 60); do
+    if [ -z "$(docker service ls -q --filter "label=com.docker.stack.namespace=$name" 2>/dev/null)" ] && \
+       [ -z "$(docker ps -aq --filter "label=com.docker.stack.namespace=$name" 2>/dev/null)" ]; then
+      return 0
+    fi
+    sleep 2
+  done
+  return 1
+}
+
+step_portainer_endpoint() {
+  # Garante que o Portainer ja tenha o ambiente do Swarm cadastrado. Na primeira subida o
+  # Portainer pode iniciar antes do agente e ficar sem ambiente (pediria o assistente inicial).
+  is_dry && { echo "      [dry-run] garantiria o ambiente 'primary' no Portainer"; return; }
+  [ "$PORTAINER_PASSWORD_OK" = "sim" ] && [ -n "$PORTAINER_JWT" ] || return 0
+  local out code body i
+  out="$(portainer_call GET /api/endpoints)"
+  code="$(echo "$out" | tail -n1)"; body="$(echo "$out" | sed '$d')"
+  [ "$code" = "200" ] || { warn "Nao foi possivel consultar os ambientes do Portainer (codigo $code)."; return 0; }
+  if [ "$(echo "$body" | jq 'length' 2>/dev/null || echo 0)" -gt 0 ]; then
+    ok "Ambiente do Portainer ja cadastrado"
+    return 0
+  fi
+  log "Cadastrando o ambiente do Swarm no Portainer"
+  for i in $(seq 1 20); do
+    out="$(docker run --rm --network "$NETWORK_NAME" "$CURL_IMAGE" -sS --max-time 30 -w '\n%{http_code}' \
+            -X POST -H "Authorization: Bearer $PORTAINER_JWT" \
+            -F Name=primary -F EndpointCreationType=2 -F "URL=tcp://tasks.agent:9001" \
+            -F TLS=true -F TLSSkipVerify=true -F TLSSkipClientVerify=true \
+            "http://portainer_portainer:9000/api/endpoints" 2>&1 < /dev/null || true)"
+    code="$(echo "$out" | tail -n1)"
+    if [ "$code" = "200" ]; then
+      ok "Ambiente 'primary' cadastrado no Portainer"
+      return 0
+    fi
+    sleep 3
+  done
+  warn "Nao foi possivel cadastrar o ambiente no Portainer (codigo $code). Ele pedira o cadastro no primeiro acesso."
+}
+
+deploy_stack_portainer() {
+  # deploy_stack_portainer <nome> <arquivo> [timeout]  -> 0 se a stack ficou sob controle do Portainer
+  local name="$1" file="$2" limit="${3:-1500}"
+  local out code body endpoint swarm stack_id
+
+  [ -n "$PORTAINER_JWT" ] || { warn "Sem sessao na API do Portainer."; return 1; }
+
+  out="$(portainer_call GET /api/endpoints)"
+  code="$(echo "$out" | tail -n1)"; body="$(echo "$out" | sed '$d')"
+  endpoint="$(echo "$body" | jq -r '.[0].Id // empty' 2>/dev/null || true)"
+  [ "$code" = "200" ] && [ -n "$endpoint" ] || { warn "A API do Portainer nao informou o ambiente (codigo $code)."; return 1; }
+
+  out="$(portainer_call GET "/api/endpoints/$endpoint/docker/swarm")"
+  code="$(echo "$out" | tail -n1)"; body="$(echo "$out" | sed '$d')"
+  swarm="$(echo "$body" | jq -r '.ID // empty' 2>/dev/null || true)"
+  [ "$code" = "200" ] && [ -n "$swarm" ] || { warn "A API do Portainer nao informou o Swarm (codigo $code)."; return 1; }
+
+  out="$(portainer_call GET /api/stacks)"
+  code="$(echo "$out" | tail -n1)"; body="$(echo "$out" | sed '$d')"
+  [ "$code" = "200" ] || [ "$code" = "204" ] || { warn "A API do Portainer nao listou as stacks (codigo $code)."; return 1; }
+  stack_id="$(echo "$body" | jq -r --arg n "$name" '.[]? | select(.Name == $n) | .Id' 2>/dev/null | head -n1 || true)"
+
+  if [ -n "$stack_id" ]; then
+    log "Atualizando a stack '$name' pelo Portainer"
+    out="$(jq -n --rawfile f "$file" '{stackFileContent: $f, env: [], prune: true, pullImage: true}' | \
+           portainer_call PUT "/api/stacks/$stack_id?endpointId=$endpoint" "$limit")"
+  else
+    if docker stack ls --format '{{.Name}}' 2>/dev/null | grep -qx "$name"; then
+      log "A stack '$name' foi criada fora do Portainer; recriando pelo Portainer (os dados sao mantidos)"
+      remove_cli_stack "$name" || warn "A stack antiga demorou a ser removida."
+    fi
+    log "Criando a stack '$name' pelo Portainer"
+    out="$(jq -n --rawfile f "$file" --arg n "$name" --arg s "$swarm" \
+             '{name: $n, swarmID: $s, stackFileContent: $f, env: []}' | \
+           portainer_call POST "/api/stacks/create/swarm/string?endpointId=$endpoint" "$limit")"
+  fi
+  code="$(echo "$out" | tail -n1)"
+  if [ "$code" = "200" ]; then
+    return 0
+  fi
+  warn "A API do Portainer recusou a stack '$name' (codigo $code): $(echo "$out" | sed '$d' | head -c 300)"
+  return 1
 }
 
 # ---------------------------------------------------------------------------
@@ -553,8 +665,25 @@ step_deploy_hermes() {
   render hermes.yaml hermes.generated.yaml "HERMES_DOMAIN=$HERMES_DOMAIN" "${common[@]}"
   ok "Arquivo gerado: $GENERATED_FILE"
   log "Fazendo deploy da stack 'hermes' (a imagem tem ~3 GB; o primeiro download pode levar alguns minutos)"
-  deploy_stack hermes "$GENERATED_FILE" 1500
-  is_dry && return 0
+  if is_dry; then
+    [ "$HERMES_VIA_PORTAINER" = "1" ] && echo "      [dry-run] criaria a stack 'hermes' pela API do Portainer"
+    deploy_stack hermes "$GENERATED_FILE" 1500
+    return 0
+  fi
+  HERMES_STACK_MODE="cli"
+  if [ "$HERMES_VIA_PORTAINER" = "1" ] && [ "$PORTAINER_PASSWORD_OK" = "sim" ]; then
+    if deploy_stack_portainer hermes "$GENERATED_FILE" 1500; then
+      HERMES_STACK_MODE="portainer"
+      ok "Stack 'hermes' sob controle do Portainer"
+    else
+      warn "Usando a linha de comando para subir o Hermes. No Portainer a stack aparece como 'Limited'."
+    fi
+  elif [ "$HERMES_VIA_PORTAINER" = "1" ]; then
+    warn "Sem login valido no Portainer: o Hermes sera implantado por linha de comando (stack 'Limited' no Portainer)."
+  fi
+  if [ "$HERMES_STACK_MODE" = "cli" ]; then
+    deploy_stack hermes "$GENERATED_FILE" 1500
+  fi
   log "Aguardando o Hermes iniciar"
   if wait_hermes 900; then
     ok "Hermes no ar (painel e API respondendo)"
@@ -647,7 +776,8 @@ print_access() {
     out+="    ATENCAO  : ja existia um Portainer neste servidor; a senha acima NAO foi aplicada.\n"
   fi
   if [ -z "$PORTAINER_DOMAIN" ]; then
-    out+="    Obs.     : certificado autoassinado. No aviso do navegador, clique em\n"
+    out+="    Obs.     : digite o endereco completo, comecando por https://\n"
+    out+="               Certificado autoassinado: no aviso do navegador, clique em\n"
     out+="               \"Avancado\" e depois em \"Continuar\".\n"
   fi
   if [ "$INSTALL_HERMES" = "1" ]; then
@@ -668,6 +798,9 @@ print_access() {
     out+="    Chave    : $HERMES_API_KEY\n"
     out+="    Modelo   : hermes-agent\n"
     out+="\n  Dados do Hermes no servidor: $HERMES_DATA_DIR\n"
+    if [ "$HERMES_STACK_MODE" = "portainer" ]; then
+      out+="  Stack do Hermes: gerenciada pelo Portainer (menu Stacks > hermes)\n"
+    fi
   fi
   out+="\n$line\n"
 
@@ -780,7 +913,8 @@ main() {
   echo
   check_dns "$PORTAINER_DOMAIN"
   check_dns "$HERMES_DOMAIN"
-  if [ -z "$PORTAINER_DOMAIN" ] && port_in_use "$PORTAINER_PORT"; then
+  if [ -z "$PORTAINER_DOMAIN" ] && port_in_use "$PORTAINER_PORT" && \
+     ! docker service inspect portainer_portainer >/dev/null 2>&1; then
     warn "A porta $PORTAINER_PORT ja esta em uso neste servidor (defina PORTAINER_PORT para trocar)."
   fi
   echo
@@ -797,6 +931,7 @@ main() {
   step_deploy_traefik
   step_deploy_portainer
   step_verify_portainer
+  step_portainer_endpoint
   if [ "$INSTALL_HERMES" = "1" ]; then
     step_deploy_hermes
     step_install_plugins
