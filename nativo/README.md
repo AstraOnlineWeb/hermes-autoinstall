@@ -31,7 +31,6 @@ O instalador pergunta:
 | Pergunta | Obrigatório | Padrão |
 |---|---|---|
 | Subdomínio do Hermes | **sim** | não prossegue sem ele |
-| E-mail para o certificado SSL | sim | |
 | Instalar os plugins? | sim ou não | sim |
 | Dar permissão de administrador (sudo) ao agente? | sim ou não | **não** |
 
@@ -50,7 +49,6 @@ Para mudar depois, rode o instalador de novo com `HERMES_SUDO=1` ou `HERMES_SUDO
 
 ```bash
 sudo ASSUME_YES=1 \
-     ACME_EMAIL=seu@email.com \
      HERMES_DOMAIN=hermes.seudominio.com.br \
      bash install.sh
 ```
@@ -60,7 +58,7 @@ sudo ASSUME_YES=1 \
 | Variável | Padrão | Descrição |
 |---|---|---|
 | `HERMES_DOMAIN` | obrigatório | subdomínio do Hermes |
-| `ACME_EMAIL` | obrigatório | e-mail do Let's Encrypt |
+| `ACME_EMAIL` | vazio | e-mail de contato no Let's Encrypt. Opcional, não é perguntado |
 | `HERMES_USER` | `admin` | usuário do painel |
 | `HERMES_PASSWORD` | gerada | senha do painel, mínimo de 8 caracteres |
 | `HERMES_SYSTEM_USER` | `hermes` | usuário Linux que roda o agente |

@@ -7,7 +7,7 @@ No final você recebe o endereço do painel com HTTPS, o usuário e a senha.
 curl -fsSL https://raw.githubusercontent.com/AstraOnlineWeb/hermes-autoinstall/main/install.sh | sudo bash
 ```
 
-O instalador pergunta o modo de instalação, o subdomínio e o e-mail para o certificado. O resto é automático.
+O instalador pergunta o modo de instalação e o subdomínio. O resto é automático.
 
 ## Os dois modos
 
@@ -54,7 +54,6 @@ Os dois modos entregam:
 ```bash
 curl -fsSL https://raw.githubusercontent.com/AstraOnlineWeb/hermes-autoinstall/main/install.sh | \
   sudo ASSUME_YES=1 \
-       ACME_EMAIL=seu@email.com \
        HERMES_DOMAIN=hermes.seudominio.com.br \
        bash -s -- docker
 ```

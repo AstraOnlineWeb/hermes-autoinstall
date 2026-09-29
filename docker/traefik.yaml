@@ -1,8 +1,8 @@
 version: "3.7"
 
 # Modelo da stack Traefik. O install.sh gera traefik.generated.yaml a partir deste arquivo:
-#   __ACME_EMAIL__   e-mail do Let's Encrypt
-#   linhas marcadas com "#ACME" sao removidas quando nenhum e-mail e informado
+#   __ACME_EMAIL__   e-mail do Let's Encrypt (opcional; a linha "#EMAIL" sai quando nao ha e-mail)
+#   linhas marcadas com "#ACME" sao removidas quando nenhum subdominio e usado
 
 services:
 
@@ -23,7 +23,7 @@ services:
       - "--certificatesresolvers.letsencryptresolver.acme.httpchallenge=true" #ACME
       - "--certificatesresolvers.letsencryptresolver.acme.httpchallenge.entrypoint=web" #ACME
       - "--certificatesresolvers.letsencryptresolver.acme.storage=/etc/traefik/letsencrypt/acme.json" #ACME
-      - "--certificatesresolvers.letsencryptresolver.acme.email=__ACME_EMAIL__" #ACME
+      - "--certificatesresolvers.letsencryptresolver.acme.email=__ACME_EMAIL__" #EMAIL
       - "--log.level=INFO"
       - "--accesslog=false"
 

@@ -34,7 +34,6 @@ O instalador pergunta:
 | Instalar o Hermes Agent? | sim ou não | padrão: sim |
 | Subdomínio do Hermes | **sim** | não prossegue |
 | Instalar os plugins? | sim ou não | padrão: sim |
-| E-mail para o certificado SSL | sim, se houver algum subdomínio | não é perguntado |
 
 ### Subdomínios
 
@@ -53,7 +52,6 @@ O **Portainer aceita os dois modos**:
 
 ```bash
 sudo ASSUME_YES=1 \
-     ACME_EMAIL=seu@email.com \
      PORTAINER_DOMAIN=portainer.seudominio.com.br \
      HERMES_DOMAIN=hermes.seudominio.com.br \
      bash install.sh
@@ -62,7 +60,7 @@ sudo ASSUME_YES=1 \
 Portainer por IP, só o Hermes com subdomínio:
 
 ```bash
-sudo ASSUME_YES=1 ACME_EMAIL=seu@email.com HERMES_DOMAIN=hermes.seudominio.com.br bash install.sh
+sudo ASSUME_YES=1 HERMES_DOMAIN=hermes.seudominio.com.br bash install.sh
 ```
 
 ## Variáveis
@@ -82,7 +80,7 @@ sudo ASSUME_YES=1 ACME_EMAIL=seu@email.com HERMES_DOMAIN=hermes.seudominio.com.b
 | `INSTALL_PLUGINS` | `1` | `0` não instala plugins |
 | `PLUGINS_REPO` | `AstraOnlineWeb/hermes-plugins` | repositório dos plugins |
 | `PLUGINS` | `codex-oauth hermes-pwa` | plugins a instalar |
-| `ACME_EMAIL` | vazio | e-mail do Let's Encrypt |
+| `ACME_EMAIL` | vazio | e-mail de contato no Let's Encrypt. Opcional, não é perguntado |
 | `HOSTNAME_NODE` | `manager1` | hostname da VPS. Vazio não altera |
 | `DOCKER_VERSION` | `28.5.2` | versão do Docker. `latest` usa a mais recente |
 | `NETWORK_NAME` | `network_public` | rede overlay compartilhada |

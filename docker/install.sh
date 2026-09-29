@@ -7,7 +7,6 @@
 #
 # Uso nao-interativo (tudo por variaveis de ambiente):
 #   sudo ASSUME_YES=1 \
-#        ACME_EMAIL=seu@email.com \
 #        HERMES_DOMAIN=hermes.seudominio.com.br \
 #        PORTAINER_DOMAIN=portainer.seudominio.com.br \
 #        bash install.sh
@@ -420,11 +419,16 @@ step_deploy_traefik() {
   log "Gerando traefik.generated.yaml"
   render traefik.yaml traefik.generated.yaml \
     "ACME_EMAIL=${ACME_EMAIL:-sem-email}" "NETWORK_NAME=$NETWORK_NAME"
-  if [ -z "$ACME_EMAIL" ]; then
-    sed -i '/#ACME/d' "$GENERATED_FILE"
-    warn "Sem e-mail ACME: Traefik instalado sem Let's Encrypt (nenhum subdominio foi informado)."
+  if [ -z "$PORTAINER_DOMAIN$HERMES_DOMAIN" ]; then
+    sed -i -e '/#ACME/d' -e '/#EMAIL/d' "$GENERATED_FILE"
+    warn "Nenhum subdominio informado: Traefik instalado sem Let's Encrypt."
   else
     sed -i 's/[[:space:]]*#ACME$//' "$GENERATED_FILE"
+    if [ -n "$ACME_EMAIL" ]; then
+      sed -i 's/[[:space:]]*#EMAIL$//' "$GENERATED_FILE"
+    else
+      sed -i '/#EMAIL/d' "$GENERATED_FILE"
+    fi
   fi
   ok "Arquivo gerado: $GENERATED_FILE"
   log "Fazendo deploy da stack 'traefik'"
@@ -907,10 +911,10 @@ main() {
     HERMES_DOMAIN=""; INSTALL_PLUGINS=0
   fi
 
-  if [ -n "$PORTAINER_DOMAIN$HERMES_DOMAIN" ]; then
-    ask ACME_EMAIL "E-mail para o certificado SSL (Let's Encrypt)" "$ACME_EMAIL"
-    ACME_EMAIL="$(echo "$ACME_EMAIL" | tr -d '[:space:]')"
-    [[ "$ACME_EMAIL" =~ ^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$ ]] || die "E-mail invalido: '$ACME_EMAIL'. Rode o instalador de novo e digite apenas o e-mail."
+  # O e-mail do Let's Encrypt e opcional e nao e perguntado. Para informar um: ACME_EMAIL=voce@dominio.com
+  if [ -n "$ACME_EMAIL" ]; then
+    ACME_EMAIL="$(clean_input "$ACME_EMAIL")"
+    [[ "$ACME_EMAIL" =~ ^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$ ]] || die "ACME_EMAIL invalido: '$ACME_EMAIL'"
   fi
 
   validate_port "Porta do Portainer" "$PORTAINER_PORT"
@@ -924,7 +928,7 @@ main() {
   echo "    Hostname ........... ${HOSTNAME_NODE:-(nao alterar)}"
   echo "    Docker ............. $DOCKER_VERSION"
   echo "    Rede ............... $NETWORK_NAME"
-  echo "    E-mail SSL ......... ${ACME_EMAIL:-(nao usado)}"
+  echo "    E-mail SSL ......... ${ACME_EMAIL:-(sem e-mail)}"
   echo "    Portainer .......... $(portainer_url)"
   if [ "$INSTALL_HERMES" = "1" ]; then
     echo "    Hermes ............. $(hermes_url)"

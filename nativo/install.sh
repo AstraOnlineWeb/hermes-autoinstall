@@ -11,7 +11,6 @@
 #
 # Uso nao-interativo:
 #   sudo ASSUME_YES=1 \
-#        ACME_EMAIL=seu@email.com \
 #        HERMES_DOMAIN=hermes.seudominio.com.br \
 #        bash install.sh
 #
@@ -437,9 +436,7 @@ step_caddy() {
   fi
   cat > "$cf" <<EOF
 # Gerado pelo auto instalador do Hermes. Alteracoes sao sobrescritas ao reinstalar.
-{
-	email $ACME_EMAIL
-}
+$( [ -n "$ACME_EMAIL" ] && printf '{\n\temail %s\n}\n' "$ACME_EMAIL" )
 
 $HERMES_DOMAIN {
 	encode gzip
@@ -651,9 +648,11 @@ main() {
   HERMES_DOMAIN="$(echo "$HERMES_DOMAIN" | tr -d '[:space:]' | tr 'A-Z' 'a-z')"
   validate_domain "Subdominio do Hermes" "$HERMES_DOMAIN"
 
-  ask ACME_EMAIL "E-mail para o certificado SSL (Let's Encrypt)" "$ACME_EMAIL"
-  ACME_EMAIL="$(echo "$ACME_EMAIL" | tr -d '[:space:]')"
-  [[ "$ACME_EMAIL" =~ ^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$ ]] || die "E-mail invalido: '$ACME_EMAIL'. Rode o instalador de novo e digite apenas o e-mail."
+  # O e-mail do Let's Encrypt e opcional e nao e perguntado. Para informar um: ACME_EMAIL=voce@dominio.com
+  if [ -n "$ACME_EMAIL" ]; then
+    ACME_EMAIL="$(clean_input "$ACME_EMAIL")"
+    [[ "$ACME_EMAIL" =~ ^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$ ]] || die "ACME_EMAIL invalido: '$ACME_EMAIL'"
+  fi
 
   if [ "$ASSUME_YES" != "1" ] && [ "$INSTALL_PLUGINS_SET" != "1" ]; then
     if confirm "Instalar os plugins do Hermes (login por assinatura e app de celular)?" s; then
@@ -677,7 +676,7 @@ main() {
   log "Resumo da configuracao:"
   echo "    IP do servidor ..... $SERVER_IP"
   echo "    Hermes ............. https://$HERMES_DOMAIN"
-  echo "    E-mail SSL ......... $ACME_EMAIL"
+  echo "    E-mail SSL ......... ${ACME_EMAIL:-(sem e-mail)}"
   echo "    Usuario Linux ...... $HERMES_SYSTEM_USER"
   echo "    Sudo para o agente . $([ "$HERMES_SUDO" = "1" ] && echo "SIM" || echo "nao")"
   echo "    Plugins ............ $([ "$INSTALL_PLUGINS" = "1" ] && echo "$PLUGINS" || echo "nao instalar")"
