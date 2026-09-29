@@ -1,0 +1,60 @@
+version: "3.7"
+
+# Portainer COM subdominio (HTTPS pelo Traefik + Let's Encrypt).
+# Placeholders: __PORTAINER_DOMAIN__  __NETWORK_NAME__
+# A senha do admin vem do secret "portainer_admin_password", criado pelo install.sh.
+
+services:
+
+  agent:
+    image: portainer/agent:lts
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /var/lib/docker/volumes:/var/lib/docker/volumes
+    networks:
+      - network_public
+    deploy:
+      mode: global
+      placement:
+        constraints: [node.platform.os == linux]
+
+  portainer:
+    image: portainer/portainer-ce:lts
+    command: -H tcp://tasks.agent:9001 --tlsskipverify --admin-password-file /run/secrets/portainer_admin_password
+    secrets:
+      - portainer_admin_password
+    volumes:
+      - portainer_data:/data
+    networks:
+      - network_public
+    deploy:
+      mode: replicated
+      replicas: 1
+      placement:
+        constraints: [node.role == manager]
+      restart_policy:
+        condition: any
+        delay: 5s
+      labels:
+        - "traefik.enable=true"
+        - "traefik.swarm.network=__NETWORK_NAME__"
+        - "traefik.http.routers.portainer.rule=Host(`__PORTAINER_DOMAIN__`)"
+        - "traefik.http.routers.portainer.entrypoints=websecure"
+        - "traefik.http.routers.portainer.priority=100"
+        - "traefik.http.routers.portainer.tls.certresolver=letsencryptresolver"
+        - "traefik.http.routers.portainer.service=portainer"
+        - "traefik.http.services.portainer.loadbalancer.server.port=9000"
+
+secrets:
+  portainer_admin_password:
+    external: true
+
+networks:
+  network_public:
+    external: true
+    name: __NETWORK_NAME__
+
+volumes:
+  portainer_data:
+    external: true
+    name: portainer_data

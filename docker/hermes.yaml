@@ -1,0 +1,58 @@
+version: "3.7"
+
+# Hermes Agent COM subdominio (HTTPS pelo Traefik + Let's Encrypt).
+# Placeholders: __HERMES_DOMAIN__ __HERMES_USER__ __HERMES_PASSWORD__ __HERMES_AUTH_SECRET__
+#               __HERMES_API_KEY__ __HERMES_DATA_DIR__ __HERMES_IMAGE__ __NETWORK_NAME__
+
+services:
+
+  hermes:
+    image: __HERMES_IMAGE__
+    command: ["gateway", "run"]
+    environment:
+      - HERMES_UID=10000
+      - HERMES_GID=10000
+      - HERMES_DASHBOARD=1
+      - HERMES_DASHBOARD_HOST=0.0.0.0
+      - HERMES_DASHBOARD_PORT=9119
+      - HERMES_DASHBOARD_PUBLIC_URL=https://__HERMES_DOMAIN__
+      - HERMES_DASHBOARD_BASIC_AUTH_USERNAME=__HERMES_USER__
+      - HERMES_DASHBOARD_BASIC_AUTH_PASSWORD=__HERMES_PASSWORD__
+      - HERMES_DASHBOARD_BASIC_AUTH_SECRET=__HERMES_AUTH_SECRET__
+      - API_SERVER_ENABLED=true
+      - API_SERVER_HOST=0.0.0.0
+      - API_SERVER_PORT=8642
+      - API_SERVER_KEY=__HERMES_API_KEY__
+    volumes:
+      - __HERMES_DATA_DIR__:/opt/data
+    networks:
+      - network_public
+    stop_grace_period: 30s
+    deploy:
+      mode: replicated
+      replicas: 1
+      placement:
+        constraints: [node.role == manager]
+      restart_policy:
+        condition: any
+        delay: 5s
+      labels:
+        - "traefik.enable=true"
+        - "traefik.swarm.network=__NETWORK_NAME__"
+        # Painel
+        - "traefik.http.routers.hermes.rule=Host(`__HERMES_DOMAIN__`)"
+        - "traefik.http.routers.hermes.entrypoints=websecure"
+        - "traefik.http.routers.hermes.tls.certresolver=letsencryptresolver"
+        - "traefik.http.routers.hermes.service=hermes"
+        - "traefik.http.services.hermes.loadbalancer.server.port=9119"
+        # API compativel com OpenAI em /v1 (protegida pela API_SERVER_KEY)
+        - "traefik.http.routers.hermes-api.rule=Host(`__HERMES_DOMAIN__`) && PathPrefix(`/v1`)"
+        - "traefik.http.routers.hermes-api.entrypoints=websecure"
+        - "traefik.http.routers.hermes-api.tls.certresolver=letsencryptresolver"
+        - "traefik.http.routers.hermes-api.service=hermes-api"
+        - "traefik.http.services.hermes-api.loadbalancer.server.port=8642"
+
+networks:
+  network_public:
+    external: true
+    name: __NETWORK_NAME__
