@@ -23,6 +23,9 @@ services:
       - API_SERVER_HOST=0.0.0.0
       - API_SERVER_PORT=8642
       - API_SERVER_KEY=__HERMES_API_KEY__
+      # Canal Chatwoot (plugin): o webhook escuta na 8646 e so e usado depois de configurado no painel
+      - CHATWOOT_WEBHOOK_HOST=0.0.0.0
+      - CHATWOOT_WEBHOOK_PORT=8646
     volumes:
       - __HERMES_DATA_DIR__:/opt/data
     networks:
@@ -51,6 +54,12 @@ services:
         - "traefik.http.routers.hermes-api.tls.certresolver=letsencryptresolver"
         - "traefik.http.routers.hermes-api.service=hermes-api"
         - "traefik.http.services.hermes-api.loadbalancer.server.port=8642"
+        # Webhook do Chatwoot em /chatwoot (protegido pelo segredo que faz parte do endereco)
+        - "traefik.http.routers.hermes-chatwoot.rule=Host(`__HERMES_DOMAIN__`) && PathPrefix(`/chatwoot/webhook`)"
+        - "traefik.http.routers.hermes-chatwoot.entrypoints=websecure"
+        - "traefik.http.routers.hermes-chatwoot.tls.certresolver=letsencryptresolver"
+        - "traefik.http.routers.hermes-chatwoot.service=hermes-chatwoot"
+        - "traefik.http.services.hermes-chatwoot.loadbalancer.server.port=8646"
 
 networks:
   network_public:

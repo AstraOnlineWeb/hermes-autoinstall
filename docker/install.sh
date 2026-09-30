@@ -47,7 +47,7 @@ HERMES_DATA_DIR="${HERMES_DATA_DIR:-/opt/hermes/data}"
 
 INSTALL_PLUGINS="${INSTALL_PLUGINS:-1}"
 PLUGINS_REPO="${PLUGINS_REPO:-AstraOnlineWeb/hermes-plugins}"
-PLUGINS="${PLUGINS:-codex-oauth hermes-pwa}"
+PLUGINS="${PLUGINS:-codex-oauth hermes-pwa chatwoot}"
 
 HELPER_IMAGE="${HELPER_IMAGE:-traefik:v3.7}"         # usada so para checar o Portainer
 CURL_IMAGE="${CURL_IMAGE:-curlimages/curl:8.11.1}"   # usada para falar com a API do Portainer
@@ -818,6 +818,9 @@ print_access() {
       out+="\n  HERMES - CONECTAR ASSINATURA (ChatGPT/Codex ou Claude)\n"
       out+="    Endereco : $(hermes_url)/codex\n"
       out+="    Passo    : clique em \"Conectar\", abra o link e informe o codigo exibido.\n"
+      out+="\n  HERMES - ATENDIMENTO PELO CHATWOOT (opcional)\n"
+      out+="    Endereco : $(hermes_url)/chatwoot\n"
+      out+="    Passo    : informe o endereco do Chatwoot, o ID da conta e o token de administrador.\n"
     fi
     out+="\n  HERMES - API (compativel com OpenAI)\n"
     out+="    Endereco : https://$HERMES_DOMAIN/v1\n"

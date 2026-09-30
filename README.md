@@ -38,7 +38,8 @@ Os dois modos entregam:
 - Certificado SSL automático (Let's Encrypt).
 - API compatível com OpenAI em `https://seu-subdominio/v1`.
 - Plugins da [AstraOnlineWeb/hermes-plugins](https://github.com/AstraOnlineWeb/hermes-plugins):
-  login por assinatura (ChatGPT/Codex e Claude) e app de celular (PWA) em `/pwa`.
+  login por assinatura (ChatGPT/Codex e Claude), app de celular (PWA) em `/pwa` e canal de atendimento
+  pelo Chatwoot (aba **Chatwoot**, opcional).
 - Dados de acesso mostrados no final e salvos em `/root/acessos.txt`.
 
 ## Antes de começar
@@ -66,6 +67,8 @@ Sem ele, o Portainer fica em `https://IP:9443`. As demais variáveis estão em [
 1. Abra o endereço do painel e entre com o usuário e a senha mostrados no final.
 2. Conecte um provedor de IA: aba **Codex / Claude** para usar sua assinatura, ou **Keys** para chave de API.
 3. No celular, abra `https://seu-subdominio/pwa` e instale o app.
+4. Para o agente atender clientes no Chatwoot, abra a aba **Chatwoot** do painel e informe o endereço do
+   Chatwoot, o ID da conta e o token de um administrador. É opcional.
 
 Perdeu os dados de acesso? Eles estão em `/root/acessos.txt`.
 

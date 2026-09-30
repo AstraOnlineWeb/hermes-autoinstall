@@ -7,7 +7,7 @@ Instala, em uma VPS Debian ou Ubuntu limpa, tudo o que é preciso para rodar o
 - Traefik, com certificado SSL automático (Let's Encrypt)
 - Portainer, já com usuário e senha criados
 - Hermes Agent, com painel protegido por senha
-- Plugins do Hermes: login por assinatura (ChatGPT/Codex e Claude) e app de celular (PWA)
+- Plugins do Hermes: login por assinatura (ChatGPT/Codex e Claude), app de celular (PWA) e canal Chatwoot
 
 No final, o instalador mostra todos os endereços, usuários e senhas.
 
@@ -79,7 +79,7 @@ sudo ASSUME_YES=1 HERMES_DOMAIN=hermes.seudominio.com.br bash install.sh
 | `HERMES_VIA_PORTAINER` | `1` | stack do Hermes criada pela API do Portainer. `0` usa linha de comando |
 | `INSTALL_PLUGINS` | `1` | `0` não instala plugins |
 | `PLUGINS_REPO` | `AstraOnlineWeb/hermes-plugins` | repositório dos plugins |
-| `PLUGINS` | `codex-oauth hermes-pwa` | plugins a instalar |
+| `PLUGINS` | `codex-oauth hermes-pwa chatwoot` | plugins a instalar |
 | `ACME_EMAIL` | vazio | e-mail de contato no Let's Encrypt. Opcional, não é perguntado |
 | `HOSTNAME_NODE` | `manager1` | hostname da VPS. Vazio não altera |
 | `DOCKER_VERSION` | `28.5.2` | versão do Docker. `latest` usa a mais recente |

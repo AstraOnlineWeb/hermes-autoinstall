@@ -32,13 +32,16 @@ HERMES_PASSWORD="${HERMES_PASSWORD:-}"             # vazio = gerada automaticame
 HERMES_SYSTEM_USER="${HERMES_SYSTEM_USER:-hermes}" # usuario Linux que roda o agente
 DASHBOARD_PORT="${DASHBOARD_PORT:-9119}"           # so em 127.0.0.1
 API_PORT="${API_PORT:-8642}"                       # so em 127.0.0.1
+CHATWOOT_PORT="${CHATWOOT_PORT:-8646}"             # webhook do plugin chatwoot, so em 127.0.0.1
+CADDY_BEGIN="# >>> hermes-autoinstall >>>"
+CADDY_END="# <<< hermes-autoinstall <<<"
 
 HERMES_SUDO_SET=0;     [ -n "${HERMES_SUDO+x}" ]     && HERMES_SUDO_SET=1
 INSTALL_PLUGINS_SET=0; [ -n "${INSTALL_PLUGINS+x}" ] && INSTALL_PLUGINS_SET=1
 HERMES_SUDO="${HERMES_SUDO:-0}"                    # 1 = agente com sudo sem senha
 INSTALL_PLUGINS="${INSTALL_PLUGINS:-1}"
 PLUGINS_REPO="${PLUGINS_REPO:-AstraOnlineWeb/hermes-plugins}"
-PLUGINS="${PLUGINS:-codex-oauth hermes-pwa}"
+PLUGINS="${PLUGINS:-codex-oauth hermes-pwa chatwoot}"
 
 HERMES_INSTALL_URL="${HERMES_INSTALL_URL:-https://hermes-agent.nousresearch.com/install.sh}"
 STATE_DIR="${STATE_DIR:-/opt/autoinstall}"
@@ -186,6 +189,8 @@ load_state() {
       HERMES_PASSWORD)    [ -z "$HERMES_PASSWORD" ] && HERMES_PASSWORD="$v" ;;
       HERMES_AUTH_SECRET) HERMES_AUTH_SECRET="$v" ;;
       HERMES_API_KEY)     HERMES_API_KEY="$v" ;;
+      # escolha anterior de sudo vale ao rodar de novo sem perguntas, salvo se HERMES_SUDO for informado
+      HERMES_SUDO)        [ "$HERMES_SUDO_SET" = "1" ] || [ "$ASSUME_YES" != "1" ] || HERMES_SUDO="$v" ;;
     esac
   done < "$STATE_FILE"
   ok "Credenciais de uma instalacao anterior reaproveitadas ($STATE_FILE)"
@@ -199,6 +204,7 @@ save_state() {
     echo "HERMES_PASSWORD=$HERMES_PASSWORD"
     echo "HERMES_AUTH_SECRET=$HERMES_AUTH_SECRET"
     echo "HERMES_API_KEY=$HERMES_API_KEY"
+    echo "HERMES_SUDO=$HERMES_SUDO"
   } > "$STATE_FILE"
   chmod 600 "$STATE_FILE"
 }
@@ -300,6 +306,8 @@ step_configure() {
     echo "API_SERVER_HOST=127.0.0.1"
     echo "API_SERVER_PORT=$API_PORT"
     echo "API_SERVER_KEY=$HERMES_API_KEY"
+    echo "CHATWOOT_WEBHOOK_HOST=127.0.0.1"
+    echo "CHATWOOT_WEBHOOK_PORT=$CHATWOOT_PORT"
     echo "# <<< autoinstall <<<"
   } > "$envf"
   rm -f "$tmp"
@@ -332,7 +340,7 @@ Environment=PATH=$path_env
 ExecStart=$HERMES_BIN gateway run --replace
 Restart=always
 RestartSec=5
-TimeoutStopSec=30
+TimeoutStopSec=90
 
 [Install]
 WantedBy=multi-user.target
@@ -354,11 +362,12 @@ Environment=PATH=$path_env
 ExecStart=$HERMES_BIN dashboard --host 127.0.0.1 --port $DASHBOARD_PORT --no-open
 Restart=always
 RestartSec=5
-TimeoutStopSec=30
+TimeoutStopSec=90
 
 [Install]
 WantedBy=multi-user.target
 EOF
+  chmod 644 /etc/systemd/system/hermes-gateway.service /etc/systemd/system/hermes-dashboard.service
   systemctl daemon-reload
   systemctl enable hermes-gateway.service hermes-dashboard.service >/dev/null 2>&1
   systemctl restart hermes-gateway.service hermes-dashboard.service
@@ -412,6 +421,82 @@ step_wait_and_secure() {
   ok "Login obrigatorio confirmado"
 }
 
+caddy_block() {
+  # Bloco do Hermes no Caddyfile. Fica entre marcadores para o instalador trocar so ele ao rodar de novo.
+  cat <<EOF
+$CADDY_BEGIN
+# Bloco gerenciado pelo auto instalador do Hermes. Nao edite entre os marcadores:
+# ele e regravado ao reinstalar. Outros sites podem ficar no resto do arquivo.
+$HERMES_DOMAIN {
+$( [ -n "$ACME_EMAIL" ] && printf '\ttls %s\n' "$ACME_EMAIL" )
+	encode gzip
+
+	# API compativel com OpenAI (protegida pela API_SERVER_KEY)
+	@api path /v1 /v1/*
+	handle @api {
+		reverse_proxy 127.0.0.1:$API_PORT {
+			flush_interval -1
+		}
+	}
+
+	# Webhook do Chatwoot (plugin chatwoot; protegido pelo segredo que faz parte do endereco)
+	@chatwoot path /chatwoot/webhook/*
+	handle @chatwoot {
+		reverse_proxy 127.0.0.1:$CHATWOOT_PORT
+	}
+
+	# Painel e app de celular
+	handle {
+		reverse_proxy 127.0.0.1:$DASHBOARD_PORT {
+			flush_interval -1
+		}
+	}
+}
+$CADDY_END
+EOF
+}
+
+write_caddyfile() {
+  # Grava o bloco do Hermes preservando o que mais existir no Caddyfile (sites criados pelo
+  # agente ou pelo usuario). So o bloco entre os marcadores e substituido.
+  local cf="$1" tmp rest
+  tmp="$(mktemp)"; rest="$(mktemp)"
+  if [ -f "$cf" ]; then
+    cp "$cf" "$cf.copia.$(date +%Y%m%d%H%M%S)"
+    if grep -qF "$CADDY_BEGIN" "$cf"; then
+      # formato atual: remove o bloco entre os marcadores
+      awk -v b="$CADDY_BEGIN" -v e="$CADDY_END" '$0==b {skip=1; next} $0==e {skip=0; next} !skip' "$cf" > "$rest"
+    elif grep -q "Gerado pelo auto instalador do Hermes" "$cf"; then
+      # formato antigo (arquivo inteiro gerado): tira o cabecalho, o bloco global de e-mail
+      # e o site do Hermes; mantem os demais sites
+      awk -v d="$HERMES_DOMAIN {" '
+        /^# Gerado pelo auto instalador do Hermes/ {next}
+        !seen && $0=="{" {skip=1; next}
+        $0==d {skip=1; seen=1; next}
+        skip && $0=="}" {skip=0; next}
+        skip {next}
+        {if ($0 !~ /^[[:space:]]*$/) seen=1; print}' "$cf" > "$rest"
+    elif grep -qE "^:80[[:space:]]*\{" "$cf" && grep -q "/usr/share/caddy" "$cf"; then
+      : > "$rest"   # Caddyfile padrao do pacote (pagina de boas-vindas): descartado
+    else
+      # Caddyfile de terceiros: mantem tudo, menos um site antigo com o mesmo dominio
+      awk -v d="$HERMES_DOMAIN {" '$0==d {skip=1; next} skip && $0=="}" {skip=0; next} !skip' "$cf" > "$rest"
+    fi
+  else
+    : > "$rest"
+  fi
+  {
+    caddy_block
+    # remove linhas em branco do inicio e repetidas do restante
+    awk 'NF {started=1} started {if (NF) {blank=0; print} else if (!blank) {blank=1; print}}' "$rest" | sed '1{/^$/d}' | \
+      { if IFS= read -r first; then echo; printf '%s\n' "$first"; cat; fi; }
+  } > "$tmp"
+  cat "$tmp" > "$cf"
+  rm -f "$tmp" "$rest"
+  # guarda so as 5 copias mais recentes
+  ls -1t "$cf".copia.* 2>/dev/null | tail -n +6 | xargs -r rm -f
+}
+
 step_caddy() {
   log "Instalando o Caddy (HTTPS automatico)"
   if is_dry; then echo "      [dry-run] instalaria o Caddy e gravaria /etc/caddy/Caddyfile"; return; fi
@@ -430,33 +515,7 @@ step_caddy() {
   fi
 
   local cf="/etc/caddy/Caddyfile"
-  if [ -f "$cf" ] && ! grep -q "Gerado pelo auto instalador do Hermes" "$cf"; then
-    cp "$cf" "$cf.antes-do-hermes.$(date +%Y%m%d%H%M%S)"
-    ok "Caddyfile anterior salvo como copia de seguranca"
-  fi
-  cat > "$cf" <<EOF
-# Gerado pelo auto instalador do Hermes. Alteracoes sao sobrescritas ao reinstalar.
-$( [ -n "$ACME_EMAIL" ] && printf '{\n\temail %s\n}\n' "$ACME_EMAIL" )
-
-$HERMES_DOMAIN {
-	encode gzip
-
-	# API compativel com OpenAI (protegida pela API_SERVER_KEY)
-	@api path /v1 /v1/*
-	handle @api {
-		reverse_proxy 127.0.0.1:$API_PORT {
-			flush_interval -1
-		}
-	}
-
-	# Painel e app de celular
-	handle {
-		reverse_proxy 127.0.0.1:$DASHBOARD_PORT {
-			flush_interval -1
-		}
-	}
-}
-EOF
+  write_caddyfile "$cf"
   caddy validate --config "$cf" --adapter caddyfile >/dev/null 2>&1 || die "Caddyfile invalido. Veja: caddy validate --config $cf"
   systemctl enable caddy >/dev/null 2>&1 || true
   systemctl restart caddy
@@ -582,6 +641,9 @@ print_access() {
     out+="\n  HERMES - CONECTAR ASSINATURA (ChatGPT/Codex ou Claude)\n"
     out+="    Endereco : https://$HERMES_DOMAIN/codex\n"
     out+="    Passo    : clique em \"Conectar\", abra o link e informe o codigo exibido.\n"
+    out+="\n  HERMES - ATENDIMENTO PELO CHATWOOT (opcional)\n"
+    out+="    Endereco : https://$HERMES_DOMAIN/chatwoot\n"
+    out+="    Passo    : informe o endereco do Chatwoot, o ID da conta e o token de administrador.\n"
   fi
   out+="\n  HERMES - API (compativel com OpenAI)\n"
   out+="    Endereco : https://$HERMES_DOMAIN/v1\n"
@@ -670,6 +732,10 @@ main() {
   [ "$HERMES_SYSTEM_USER" != "root" ] || die "O agente nao pode rodar como root. Use HERMES_SUDO=1 se quiser dar poderes de administrador."
 
   load_state
+  if [ "$ASSUME_YES" = "1" ] && [ "$HERMES_SUDO_SET" != "1" ] && [ -f /etc/sudoers.d/hermes-agent ] && \
+     ! grep -q "^HERMES_SUDO=" "$STATE_FILE" 2>/dev/null; then
+    HERMES_SUDO=1
+  fi
   prepare_secrets
 
   echo

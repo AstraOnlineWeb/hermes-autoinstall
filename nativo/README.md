@@ -6,7 +6,7 @@ Instala o [Hermes Agent](https://github.com/NousResearch/hermes-agent) direto na
 - Dois serviços no systemd: `hermes-gateway` (canais, API, agendamentos) e `hermes-dashboard` (painel)
 - Caddy como proxy, com certificado SSL automático (Let's Encrypt)
 - Painel protegido por usuário e senha
-- Plugins do Hermes: login por assinatura (ChatGPT/Codex e Claude) e app de celular (PWA)
+- Plugins do Hermes: login por assinatura (ChatGPT/Codex e Claude), app de celular (PWA) e canal Chatwoot
 
 No final, o instalador mostra todos os endereços, usuários e senhas.
 
@@ -65,9 +65,10 @@ sudo ASSUME_YES=1 \
 | `HERMES_SUDO` | `0` | `1` dá sudo sem senha ao agente |
 | `INSTALL_PLUGINS` | `1` | `0` não instala plugins |
 | `PLUGINS_REPO` | `AstraOnlineWeb/hermes-plugins` | repositório dos plugins |
-| `PLUGINS` | `codex-oauth hermes-pwa` | plugins a instalar |
+| `PLUGINS` | `codex-oauth hermes-pwa chatwoot` | plugins a instalar |
 | `DASHBOARD_PORT` | `9119` | porta interna do painel (só em 127.0.0.1) |
 | `API_PORT` | `8642` | porta interna da API (só em 127.0.0.1) |
+| `CHATWOOT_PORT` | `8646` | porta interna do webhook do plugin chatwoot (só em 127.0.0.1) |
 | `ASSUME_YES` | `0` | `1` não faz perguntas |
 | `DRY_RUN` | `0` | `1` simula e não altera o sistema |
 
@@ -100,10 +101,18 @@ hermes update                                            # atualizar o Hermes
 
 Depois de `hermes update`, reinicie os serviços.
 
+## Outros sites no mesmo servidor
+
+O instalador grava o site do Hermes no `/etc/caddy/Caddyfile` entre dois marcadores
+(`# >>> hermes-autoinstall >>>` e `# <<< hermes-autoinstall <<<`) e só mexe nesse trecho.
+Sites que você ou o agente criarem fora dos marcadores são mantidos ao rodar o instalador de novo.
+Antes de cada alteração fica uma cópia em `/etc/caddy/Caddyfile.copia.<data>`.
+
 ## Rodar de novo
 
 O instalador pode ser executado mais de uma vez. Ele mantém o Hermes instalado, os dados e as senhas,
 e reaplica a configuração. Serve para trocar o subdomínio ou ligar e desligar o sudo do agente.
+Sem perguntas (`ASSUME_YES=1`), a escolha anterior de sudo é mantida, salvo se `HERMES_SUDO` for informado.
 
 ## Segurança
 
