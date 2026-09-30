@@ -549,7 +549,7 @@ step_sudo() {
 }
 
 step_install_plugins() {
-  local p out failed=0
+  local p out failed=0 had=0
   [ "$INSTALL_PLUGINS" = "1" ] || { ok "Instalacao de plugins desativada (INSTALL_PLUGINS=0)"; return; }
   if is_dry; then
     for p in $PLUGINS; do echo "      [dry-run] hermes plugins install $PLUGINS_REPO/$p --enable"; done
@@ -557,16 +557,22 @@ step_install_plugins() {
   fi
   log "Instalando plugins do repositorio $PLUGINS_REPO"
   for p in $PLUGINS; do
+    # Plugin ja instalado: reinstala a versao atual do repositorio. A copia antiga fica guardada e
+    # volta se a instalacao falhar. ("plugins update" nao funciona em toda versao do Hermes.)
+    had=0; rm -rf "$HERMES_HOME_DIR/plugins/.$p.anterior"
     if [ -d "$HERMES_HOME_DIR/plugins/$p" ]; then
-      as_hermes "hermes plugins update '$p'" >/dev/null 2>&1 < /dev/null || true
-      as_hermes "hermes plugins enable '$p'" >/dev/null 2>&1 < /dev/null || true
-      ok "Plugin '$p' ja instalado (atualizado)"
-      continue
+      had=1; mv "$HERMES_HOME_DIR/plugins/$p" "$HERMES_HOME_DIR/plugins/.$p.anterior"
     fi
     out="$(as_hermes "hermes plugins install '$PLUGINS_REPO/$p' --enable" 2>&1 < /dev/null || true)"
     if [ -f "$HERMES_HOME_DIR/plugins/$p/plugin.yaml" ]; then
-      ok "Plugin '$p' instalado e habilitado"
+      rm -rf "$HERMES_HOME_DIR/plugins/.$p.anterior"
+      [ "$had" = "1" ] && ok "Plugin '$p' atualizado" || ok "Plugin '$p' instalado e habilitado"
     else
+      if [ "$had" = "1" ]; then
+        rm -rf "$HERMES_HOME_DIR/plugins/$p"; mv "$HERMES_HOME_DIR/plugins/.$p.anterior" "$HERMES_HOME_DIR/plugins/$p"
+        warn "Nao foi possivel atualizar o plugin '$p'; a versao anterior foi mantida."
+        continue
+      fi
       failed=1
       err "Falha ao instalar o plugin '$p':"
       echo "$out" | grep -viE 'warning' | tail -n 5 | sed 's/^/      /'
